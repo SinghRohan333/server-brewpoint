@@ -9,6 +9,7 @@ import {
   verifyRefreshToken,
 } from "../utils/jwt";
 import { AppError } from "../middleware/errorHandler";
+import { AuthRequest } from "../middleware/auth";
 
 const toUserResponse = (user: User): UserResponse => ({
   id: user._id!.toString(),
@@ -149,4 +150,19 @@ export const refresh = async (
 export const logout = async (req: Request, res: Response) => {
   res.clearCookie("refreshToken", REFRESH_COOKIE_OPTIONS);
   res.status(200).json({ success: true, message: "Logged out" });
+};
+
+export const getMe = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const users = getDB().collection<User>("users");
+    const user = await users.findOne({ _id: new ObjectId(req.user!.userId) });
+    if (!user) throw new AppError("User not found", 404);
+    res.status(200).json({ success: true, user: toUserResponse(user) });
+  } catch (error) {
+    next(error);
+  }
 };
