@@ -18,6 +18,7 @@ export const getProducts = async (
       minPrice,
       maxPrice,
       rating,
+      roastLevel,
       sort = "newest",
       page = "1",
       limit = "12",
@@ -38,6 +39,8 @@ export const getProducts = async (
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
     if (rating) filter.rating = { $gte: Number(rating) };
+
+    if (roastLevel) filter.roastLevel = roastLevel;
 
     const sortMap: Record<string, Record<string, 1 | -1>> = {
       newest: { createdAt: -1 },
