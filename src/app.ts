@@ -7,6 +7,7 @@ import { notFound, errorHandler } from "./middleware/errorHandler";
 import authRoutes from "./routes/authRoutes";
 import productRoutes from "./routes/productRoutes";
 import contactRoutes from "./routes/contactRoutes";
+import adminRoutes from "./routes/adminRoutes";
 
 const app: Application = express();
 const allowedOrigin = process.env.CLIENT_URL || "http://localhost:3000";
@@ -37,6 +38,7 @@ app.use(morgan("dev"));
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get("/api/health", (req: Request, res: Response) => {
   res.json({ success: true, message: "API is running" });
