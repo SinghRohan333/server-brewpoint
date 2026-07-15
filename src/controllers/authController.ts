@@ -10,6 +10,9 @@ import {
 } from "../utils/jwt";
 import { AppError } from "../middleware/errorHandler";
 import { AuthRequest } from "../middleware/auth";
+import { OAuth2Client } from "google-auth-library";
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const toUserResponse = (user: User): UserResponse => ({
   id: user._id!.toString(),
@@ -55,6 +58,7 @@ export const register = async (
       email: email.toLowerCase(),
       password: hashedPassword,
       role: "user",
+      authProvider: "local",
       createdAt: new Date(),
     };
 
@@ -97,7 +101,15 @@ export const login = async (
       throw new AppError("Invalid email or password", 401);
     }
 
+    if (!user.password) {
+      throw new AppError(
+        "This account uses Google Sign-In. Please continue with Google.",
+        400,
+      );
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
+
     if (!isMatch) {
       throw new AppError("Invalid email or password", 401);
     }
@@ -108,6 +120,67 @@ export const login = async (
     });
     const refreshToken = generateRefreshToken({
       userId: user._id!.toString(),
+      role: user.role,
+    });
+
+    res.cookie("refreshToken", refreshToken, REFRESH_COOKIE_OPTIONS);
+    res
+      .status(200)
+      .json({ success: true, accessToken, user: toUserResponse(user) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const googleAuth = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) throw new AppError("Missing Google credential", 400);
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload || !payload.email) {
+      throw new AppError("Invalid Google credential", 401);
+    }
+
+    const { email, name, sub: googleId } = payload;
+    const users = getDB().collection<User>("users");
+    let user = await users.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      const newUser: User = {
+        name: name || email.split("@")[0],
+        email: email.toLowerCase(),
+        role: "user",
+        authProvider: "google",
+        googleId,
+        createdAt: new Date(),
+      };
+      const result = await users.insertOne(newUser);
+      user = { ...newUser, _id: result.insertedId };
+    } else if (!user.googleId) {
+      // Existing account, same verified email — link Google without creating a duplicate
+      await users.updateOne({ _id: user._id }, { $set: { googleId } });
+      user = { ...user, googleId };
+    }
+
+    if (!user) {
+      throw new AppError("Failed to authenticate with Google", 500);
+    }
+
+    const accessToken = generateAccessToken({
+      userId: user._id.toString(),
+      role: user.role,
+    });
+    const refreshToken = generateRefreshToken({
+      userId: user._id.toString(),
       role: user.role,
     });
 
